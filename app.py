@@ -40,8 +40,19 @@ if st.button("変換する"):
 st.markdown("---")
 st.caption("Created with AI Collaboration")
 
+# --- ここから下を貼り替え ---
 st.markdown("---")
 st.write("開発を応援していただけると嬉しいです！")
-# 自分のURLに書き換える
-bmc_url = "https://www.buymeacoffee.com/reoon-stack" 
-st.markdown(f'<a href="{bmc_url}" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>', unsafe_allow_up_to_html=True)
+
+# あなたのURLに書き換えてください
+bmc_url = "https://www.buymeacoffee.com/reoon-stack"
+
+# ボタンを表示するコード（修正済み）
+st.markdown(
+    f'<a href="{bmc_url}" target="_blank">'
+    f'<img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" '
+    f'alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >'
+    f'</a>',
+    unsafe_allow_up_to_html=True
+)
+
