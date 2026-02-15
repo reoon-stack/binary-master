@@ -37,4 +37,5 @@ if st.button("変換する"):
 st.markdown("---")
 st.write("🌟 **開発を応援する**")
 st.write("もし役に立ったら、こちらから応援していただけると嬉しいです！")
-st.write("https://www.buymeacoffee.com/reoon-stack")
+st.write("https://buymeacoffee.com/shiranakake")
+
