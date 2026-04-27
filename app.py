@@ -33,9 +33,5 @@ if st.button("変換する"):
             st.write(f"{temp} ÷ 2 = {temp // 2} ... 余り **{temp % 2}**")
             temp //= 2
 
-# 5. 応援リンク（エラーを避けるため、画像ボタンではなく文字リンクにします！）
-st.markdown("---")
-st.write("🌟 **開発を応援する**")
-st.write("もし役に立ったら、こちらから応援していただけると嬉しいです！")
-st.write("https://buymeacoffee.com/shiranakake")
+
 
