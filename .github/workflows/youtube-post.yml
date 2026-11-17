@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       index:
-        description: "何本目の動画か (空欄なら日付で自動。料理は8品をローテーション)"
+        description: "何本目の動画か 0-7 (空欄なら日付で自動)"
         required: false
         type: string
       dry_run:

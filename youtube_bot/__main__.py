@@ -18,8 +18,12 @@ from pixel_cooking import DISHES, make_video, pick
 from .meta import build_episode
 
 
+# この日に 1 本目(DISHES[0])を投稿し、以降 1 日 1 品。全部投稿したら何もしない。
+START_DATE = dt.date(2026, 11, 18)
+
+
 def day_number(date: dt.date) -> int:
-    return (date - dt.date(2026, 1, 1)).days
+    return (date - START_DATE).days
 
 
 def main() -> None:
@@ -35,9 +39,19 @@ def main() -> None:
     date = (dt.date.fromisoformat(args.date) if args.date
             else dt.datetime.now(ZoneInfo("Asia/Tokyo")).date())
     index = args.index if args.index is not None else day_number(date)
-    dish, theme = pick(index)
+    picked = pick(index)
+    if picked is None:
+        msg = (f"[{date}] #{index}: 投稿する料理がありません(全 {len(DISHES)} 品は投稿済み、"
+               "または開始日前)。今日はスキップします。")
+        print(msg)
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
+        return
+    dish, theme = picked
     ep = build_episode(dish, index)
-    print(f"[{date}] #{index} {dish.key}({dish.answer}) / テーマ {index // len(DISHES)} : {ep.title}")
+    print(f"[{date}] #{index + 1}/{len(DISHES)} {dish.key}({dish.answer}) : {ep.title}")
 
     video = make_video(dish, theme, Path(args.out) / f"{date}_{dish.key}.mp4", seed=index)
     print(f"動画を作成しました: {video}")

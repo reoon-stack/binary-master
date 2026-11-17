@@ -16,10 +16,13 @@ __all__ = ["DISHES", "BY_KEY", "THEMES", "Scene", "make_video", "pick"]
 
 
 def pick(index: int):
-    """index 本目の動画に使う (料理, テーマ)。料理が一周するごとにテーマを変える。"""
-    dish = DISHES[index % len(DISHES)]
-    theme = THEMES[(index // len(DISHES)) % len(THEMES)]
-    return dish, theme
+    """index 本目の動画に使う (料理, テーマ)。料理ごとに見た目のテーマも変える。
+
+    料理は各 1 回だけ。全部使い切ったら None を返す。
+    """
+    if not 0 <= index < len(DISHES):
+        return None
+    return DISHES[index], THEMES[index % len(THEMES)]
 
 
 def make_video(dish, theme, out_path, seed: int = 0) -> Path:
