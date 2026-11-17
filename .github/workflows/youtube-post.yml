@@ -6,11 +6,10 @@ on:
     - cron: "7 9 * * *"
   workflow_dispatch:
     inputs:
-      kind:
-        description: "動画の種類 (空欄なら日付で自動)"
+      index:
+        description: "台本の番号 (空欄なら日付で自動)"
         required: false
-        type: choice
-        options: ["", "tip", "quiz"]
+        type: string
       dry_run:
         description: "アップロードせず動画だけ作る"
         required: false
@@ -24,7 +23,12 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    services:
+      voicevox:
+        image: voicevox/voicevox_engine:cpu-latest
+        ports:
+          - 50021:50021
     steps:
       - uses: actions/checkout@v4
 
@@ -32,13 +36,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: ffmpeg と日本語フォントをインストール
+      - name: ffmpeg とフォントをインストール
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji
 
       - name: Python パッケージをインストール
         run: pip install -r requirements-youtube.txt
+
+      - name: VOICEVOX の起動を待つ
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:50021/version && exit 0
+            sleep 3
+          done
+          echo "VOICEVOX が起動しませんでした" && exit 1
 
       - name: 動画を作成して投稿
         env:
@@ -46,10 +58,12 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
+          INDEX: ${{ inputs.index }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           ARGS=""
-          if [ -n "${{ inputs.kind }}" ]; then ARGS="$ARGS --kind ${{ inputs.kind }}"; fi
-          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$INDEX" ]; then ARGS="$ARGS --index $INDEX"; fi
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           python -m youtube_bot $ARGS
 
       - name: 作成した動画を保存
