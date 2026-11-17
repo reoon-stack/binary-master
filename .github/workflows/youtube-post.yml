@@ -1,0 +1,62 @@
+name: YouTube 自動投稿
+
+on:
+  schedule:
+    # 毎日 18:07 (日本時間) = 09:07 UTC
+    - cron: "7 9 * * *"
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "動画の種類 (空欄なら日付で自動)"
+        required: false
+        type: choice
+        options: ["", "tip", "quiz"]
+      dry_run:
+        description: "アップロードせず動画だけ作る"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: youtube-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ffmpeg と日本語フォントをインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+
+      - name: Python パッケージをインストール
+        run: pip install -r requirements-youtube.txt
+
+      - name: 動画を作成して投稿
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.kind }}" ]; then ARGS="$ARGS --kind ${{ inputs.kind }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python -m youtube_bot $ARGS
+
+      - name: 作成した動画を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: output/*.mp4
+          if-no-files-found: ignore
+          retention-days: 7
