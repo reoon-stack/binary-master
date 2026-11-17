@@ -1,11 +1,10 @@
 # YouTube 全自動投稿のセットアップ
 
-GitHub Actions が **毎日 18:07 (日本時間)** に縦型ショート動画を自動で作って YouTube に投稿します。
+GitHub Actions が **毎日 18:07 (日本時間)** に「究極の2択」ショート動画を自動で作って YouTube に投稿します。
 
-- 偶数日: **今日の豆知識**（2進数・16進数・文字コード・ネットワークなど 30 本、`youtube_bot/tips.json`）
-- 奇数日: **基数変換クイズ**（日付から自動出題、解き方つき・ネタ切れなし）
-
-豆知識は `youtube_bot/tips.json` に追加すれば自動でローテーションに入ります。
+- 1本に3問。ずんだもんと四国めたん（VOICEVOX）が別々の側を選んで理由を話し、最後に「コメントで 1A 2B 3A みたいに教えてね」と呼びかけます。
+- BGM・効果音はコードで合成（著作権フリー）。説明欄に VOICEVOX のクレジットを自動で入れます。
+- 2択のネタは `youtube_bot/choices.json`（1行 = `[A, Aの絵文字, Aの理由, B, Bの絵文字, Bの理由]`）。追加すると自動でローテーションに入ります。理由は「〜からなのだ」「〜からよ」が後ろにつく形で書いてください。
 
 ---
 
@@ -67,4 +66,5 @@ python scripts/get_refresh_token.py client_secret.json
 - API の無料枠は 1日 10,000 ユニット、アップロードは 1本あたり約 1,600。1日1本なら余裕です。
 - 公開リポジトリは 60日間コミットがないと定期実行が自動停止します。Actions タブから再有効化できます。
 - 手元で試す場合: `pip install -r requirements-youtube.txt` と ffmpeg を入れて
+  VOICEVOX エンジンを起動（`docker run -p 50021:50021 voicevox/voicevox_engine:cpu-latest`）してから
   `python -m youtube_bot --dry-run`（`output/` に mp4 ができます）。

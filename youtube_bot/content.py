@@ -1,76 +1,109 @@
-"""今日投稿する動画の台本を決める。
+"""今日投稿する「究極の2択」動画の台本を作る。
 
-ずんだもん × 四国めたん の掛け合いで「意外な雑学」を紹介する形式。
-台本は scripts.json にあり、日付で順番に使う(状態ファイル不要)。
+1本に3問。各問は
+  めたんが出題 → 3秒カウントダウン → ずんだもんとめたんが別々の側を選んで理由を言う
+最後に「コメントで 1A 2B 3A みたいに教えてね」と呼びかける。
+2択のネタは choices.json。日付で順番に使う(状態ファイル不要)。
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCRIPTS_PATH = Path(__file__).with_name("scripts.json")
+CHOICES_PATH = Path(__file__).with_name("choices.json")
+QUESTIONS_PER_VIDEO = 3
+KANJI_NUMS = ["1", "2", "3"]
 
 SPEAKERS = {
     "m": {"name": "四国めたん", "voicevox_id": 2, "color": (190, 110, 230)},
     "z": {"name": "ずんだもん", "voicevox_id": 3, "color": (110, 200, 80)},
 }
 
-OUTRO = [
-    ("m", "毎日ひとつ、意外な雑学を紹介しているわ", "📅"),
-    ("z", "チャンネル登録して、また見に来てほしいのだ！", "🔔"),
-]
-
-COMMON_TAGS = ["雑学", "豆知識", "ずんだもん", "四国めたん", "VOICEVOX", "shorts"]
+COMMON_TAGS = ["究極の2択", "2択", "どっち派", "心理テスト", "ずんだもん", "四国めたん",
+               "VOICEVOX", "shorts"]
 
 
 @dataclass
-class Line:
-    speaker: str
+class Choice:
     text: str
     emoji: str
+    reason: str
+
+
+@dataclass
+class Question:
+    a: Choice
+    b: Choice
+
+
+@dataclass
+class Step:
+    kind: str                  # "line" | "countdown"
+    q: int                     # 何問目か (0始まり)
+    speaker: str = ""
+    text: str = ""
+    pick: str | None = None    # この発言で選んだ側 "a" / "b"
 
 
 @dataclass
 class Episode:
     title: str
-    topic: str
     description: str
     tags: list[str]
-    lines: list[Line] = field(default_factory=list)
+    questions: list[Question]
+    steps: list[Step] = field(default_factory=list)
 
 
 def day_number(date: dt.date) -> int:
     return (date - dt.date(2026, 1, 1)).days
 
 
-def load_scripts() -> list[dict]:
-    return json.loads(SCRIPTS_PATH.read_text(encoding="utf-8"))
+def load_choices() -> list[Question]:
+    raw = json.loads(CHOICES_PATH.read_text(encoding="utf-8"))
+    return [Question(Choice(*r[:3]), Choice(*r[3:])) for r in raw]
 
 
 def make_episode(index: int) -> Episode:
-    scripts = load_scripts()
-    s = scripts[index % len(scripts)]
-    lines = [Line(*l) for l in s["lines"]] + [Line(*l) for l in OUTRO]
-    title = f"【雑学】{s['hook']}"
-    script_text = "\n".join(
-        f"{SPEAKERS[l.speaker]['name']}「{l.text}」" for l in lines[: len(s["lines"])]
-    )
+    bank = load_choices()
+    # 1本3問。ネタ数が3の倍数でなければ、2周目以降は組み合わせが変わる
+    qs = [bank[(index * QUESTIONS_PER_VIDEO + k) % len(bank)]
+          for k in range(QUESTIONS_PER_VIDEO)]
+    rng = random.Random(index)
+
+    steps: list[Step] = [Step("line", 0, "z", "究極の2択、いくのだ！")]
+    for i, q in enumerate(qs):
+        steps.append(Step("line", i, "m",
+                          f"第{KANJI_NUMS[i]}問。{q.a.text}？それとも、{q.b.text}？"))
+        steps.append(Step("countdown", i))
+        z_side = rng.choice("ab")
+        m_side = "b" if z_side == "a" else "a"
+        zc, mc = getattr(q, z_side), getattr(q, m_side)
+        steps.append(Step("line", i, "z", f"ボクは{zc.text}派なのだ！{zc.reason}からなのだ", z_side))
+        steps.append(Step("line", i, "m", f"わたくしは{mc.text}派ね。{mc.reason}からよ", m_side))
+    steps.append(Step("line", QUESTIONS_PER_VIDEO - 1, "m",
+                      "あなたはどっち？コメントで「1A」みたいに教えてね！"))
+
+    q0 = qs[0]
+    title = f"【究極の2択】{q0.a.text} vs {q0.b.text} あなたはどっち？"
+    lines = "\n".join(f"Q{i + 1}. A: {q.a.text} / B: {q.b.text}" for i, q in enumerate(qs))
     description = (
-        f"{s['title']}\n\n{script_text}\n\n"
-        "毎日ひとつ、思わず人に話したくなる雑学をお届けします。\n\n"
+        f"究極の2択、あなたはどっちを選ぶ？\n\n{lines}\n\n"
+        "コメントで「1A 2B 3A」のように答えを教えてね！\n"
+        "毎日新しい2択を投稿しています。\n\n"
         "音声: VOICEVOX:四国めたん / VOICEVOX:ずんだもん\n\n"
-        "#雑学 #豆知識 #ずんだもん #shorts"
+        "#究極の2択 #どっち派 #ずんだもん #shorts"
     )
     suffix = " #shorts"
     return Episode(
         title=title[: 100 - len(suffix)] + suffix,
-        topic=s["hook"],
         description=description,
-        tags=list(dict.fromkeys(s.get("tags", []) + COMMON_TAGS)),
-        lines=lines,
+        tags=COMMON_TAGS,
+        questions=qs,
+        steps=steps,
     )
 
 

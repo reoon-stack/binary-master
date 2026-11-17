@@ -15,8 +15,6 @@ import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import numpy as np
-
 from . import audio
 from .content import SPEAKERS, day_number, episode_for
 from .render import render_video
@@ -25,7 +23,7 @@ from .render import render_video
 def main() -> None:
     p = argparse.ArgumentParser(description="YouTube Shorts 自動投稿")
     p.add_argument("--date", help="YYYY-MM-DD (既定: 今日・日本時間)")
-    p.add_argument("--index", type=int, help="台本の番号 (既定: 日付で自動)")
+    p.add_argument("--index", type=int, help="何本目の2択セットか (既定: 日付で自動)")
     p.add_argument("--out", default="output", help="出力フォルダ")
     p.add_argument("--dry-run", action="store_true", help="アップロードしない")
     p.add_argument("--no-voice", action="store_true", help="読み上げなしで作る(確認用)")
@@ -41,19 +39,20 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     print(f"[{date}] {ep.title}")
 
-    if args.no_voice:
-        voices = [audio.placeholder_voice(l.text) for l in ep.lines]
-    else:
-        if not audio.voicevox_available():
-            raise SystemExit(f"VOICEVOX エンジンに接続できません: {audio.VOICEVOX_URL}")
-        voices = [audio.synthesize(l.text, SPEAKERS[l.speaker]["voicevox_id"])
-                  for l in ep.lines]
+    chunks, kinds = [], []
+    if not args.no_voice and not audio.voicevox_available():
+        raise SystemExit(f"VOICEVOX エンジンに接続できません: {audio.VOICEVOX_URL}")
+    for st in ep.steps:
+        kinds.append(st.kind)
+        if st.kind == "countdown":
+            chunks.append(audio.countdown_chunk())
+        elif args.no_voice:
+            chunks.append(audio.placeholder_voice(st.text))
+        else:
+            chunks.append(audio.synthesize(st.text, SPEAKERS[st.speaker]["voicevox_id"]))
 
-    mixed, segments, total = audio.mix(voices, gap=0.25, tail=0.8, seed=seed)
-    voice_only = np.zeros(int(audio.SR * total), dtype=np.float32)
-    for v, s in zip(voices, segments):
-        i = int(s.start * audio.SR)
-        voice_only[i:i + v.size] = v[: voice_only.size - i]
+    mixed, voice_only, segments, total = audio.mix(chunks, kinds, gap=0.15, tail=0.8,
+                                                  seed=seed)
     wav = out / "audio.wav"
     audio.write_wav(wav, mixed)
 

@@ -1,8 +1,9 @@
-"""台本 + 音声から縦型(1080x1920)の Shorts 動画を作る。
+"""台本 + 音声から縦型(1080x1920)の「究極の2択」Shorts 動画を作る。
 
 画面構成:
-  上   : 進捗バー / お題の帯
-  中央 : セリフに合わせた大きな絵文字(ポップアニメーション)
+  上   : 進捗バー / 「究極の2択 Q1/3」ヘッダー
+  中央 : A(赤)と B(青)の選択肢カード、間に VS(カウントダウン中は数字)
+         キャラが選ぶと、そのカードに顔バッジが付く
   下   : 字幕ボックス(話者の色) / 2人のキャラクター(口パク)
 背景はゆっくり動くグラデーション + 浮かぶ光の玉。
 """
@@ -20,7 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .audio import SR, Segment
-from .content import SPEAKERS, Episode
+from .content import SPEAKERS, Choice, Episode
 
 W, H = 1080, 1920
 FPS = 30
@@ -87,8 +88,11 @@ _MEASURE = ImageDraw.Draw(Image.new("L", (1, 1)))
 
 
 def _wrap(text: str, f, max_w: int) -> list[str]:
-    """行数が最小になる範囲で、各行の長さがそろうように折り返す。"""
+    """句読点で区切れるならそこで改行。無理なら行の長さがそろうように折り返す。"""
     lines = _wrap_greedy(text, f, max_w)
+    phrased = _wrap_phrases(text, f, max_w)
+    if phrased and len(phrased) <= len(lines):
+        return phrased
     if len(lines) > 1:
         target = _MEASURE.textlength(text, font=f) / len(lines)
         w = int(target)
@@ -97,6 +101,22 @@ def _wrap(text: str, f, max_w: int) -> list[str]:
             if len(balanced) == len(lines):
                 return balanced
             w += 10
+    return lines
+
+
+def _wrap_phrases(text: str, f, max_w: int) -> list[str] | None:
+    import re
+    chunks = [c for c in re.split(r"(?<=[、。！？])", text) if c]
+    lines, cur = [], ""
+    for c in chunks:
+        if _MEASURE.textlength(c, font=f) > max_w:
+            return None
+        if _MEASURE.textlength(cur + c, font=f) > max_w:
+            lines.append(cur)
+            cur = c
+        else:
+            cur += c
+    lines.append(cur)
     return lines
 
 
@@ -115,41 +135,14 @@ def _wrap_greedy(text: str, f, max_w: int) -> list[str]:
     return lines
 
 
-def topic_banner(topic: str) -> Image.Image:
-    im = Image.new("RGBA", (W, 330))
-    d = ImageDraw.Draw(im)
-    size = 76
-    while size > 44:
-        lines = _wrap(topic, font(size), W - 200)
-        if len(lines) <= 2:
-            break
-        size -= 4
-    line_h = int(size * 1.3)
-    box_h = line_h * len(lines) + 70
-    top = 100
-    d.rounded_rectangle((60, top, W - 60, top + box_h), 36, fill=(255, 255, 255, 245),
-                        outline=DARK, width=8)
-    tag = "9割が知らない雑学"
-    tf = font(40)
-    tw = d.textlength(tag, font=tf)
-    d.rounded_rectangle((W / 2 - tw / 2 - 30, top - 34, W / 2 + tw / 2 + 30, top + 34), 34,
-                        fill=(235, 60, 70))
-    d.text((W / 2, top), tag, font=tf, fill="white", anchor="mm")
-    y = top + 40 + line_h / 2
-    for ln in lines:
-        d.text((W / 2, y), ln, font=font(size), fill=DARK, anchor="mm")
-        y += line_h
-    return im
-
-
 def subtitle_box(text: str, speaker: str) -> Image.Image:
     sp = SPEAKERS[speaker]
     im = Image.new("RGBA", (W, 420))
     d = ImageDraw.Draw(im)
-    size = 68
-    while size > 44:
+    size = 60
+    while size > 40:
         lines = _wrap(text, font(size), W - 200)
-        if len(lines) <= 3:
+        if len(lines) <= 2:
             break
         size -= 4
     line_h = int(size * 1.35)
@@ -248,20 +241,100 @@ def _paste_center(base: Image.Image, im: Image.Image, cx: float, cy: float, scal
     base.paste(im, (int(cx - im.width / 2), int(cy - im.height / 2)), im)
 
 
+RED = (235, 70, 85)
+BLUE = (55, 125, 235)
+CARD_W, CARD_H = W - 100, 450
+CARD_Y = {"a": 560, "b": 1100}
+
+
+def header(q: int, total_q: int) -> Image.Image:
+    im = Image.new("RGBA", (W, 300))
+    d = ImageDraw.Draw(im)
+    top = 110
+    d.rounded_rectangle((60, top, W - 60, top + 140), 36, fill=(255, 255, 255, 245),
+                        outline=DARK, width=8)
+    d.text((W / 2, top + 72), "あなたはどっち？", font=font(78), fill=DARK, anchor="mm")
+    tag = f"究極の2択  Q{q + 1}/{total_q}"
+    tf = font(44)
+    tw = d.textlength(tag, font=tf)
+    d.rounded_rectangle((W / 2 - tw / 2 - 34, top - 38, W / 2 + tw / 2 + 34, top + 38), 38,
+                        fill=RED)
+    d.text((W / 2, top), tag, font=tf, fill="white", anchor="mm")
+    return im
+
+
+def choice_card(c: Choice, side: str) -> Image.Image:
+    color = RED if side == "a" else BLUE
+    im = Image.new("RGBA", (CARD_W + 40, CARD_H + 40))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((20, 20, CARD_W + 20, CARD_H + 20), 50, fill=color,
+                        outline="white", width=12)
+    # A / B ラベル
+    d.ellipse((46, 46, 166, 166), fill="white")
+    d.text((106, 104), side.upper(), font=font(78), fill=color, anchor="mm")
+    em = emoji_image(c.emoji, 190)
+    if em:
+        im.paste(em, (int((CARD_W + 40) / 2 - em.width / 2), 50), em)
+    size = 84
+    while size > 48:
+        lines = _wrap(c.text, font(size), CARD_W - 120)
+        if len(lines) <= 2:
+            break
+        size -= 4
+    line_h = int(size * 1.25)
+    y = 335 - line_h * (len(lines) - 1) / 2
+    for ln in lines:
+        d.text(((CARD_W + 40) / 2, y), ln, font=font(size), fill="white", anchor="mm",
+               stroke_width=5, stroke_fill=DARK)
+        y += line_h
+    return im
+
+
+def vs_badge(label: str, color=DARK) -> Image.Image:
+    im = Image.new("RGBA", (220, 220))
+    d = ImageDraw.Draw(im)
+    d.ellipse((10, 10, 210, 210), fill="white", outline=color, width=10)
+    d.text((110, 112), label, font=font(96 if len(label) == 1 else 78), fill=color, anchor="mm")
+    return im
+
+
+def pick_badge(speaker: str) -> Image.Image:
+    sp = SPEAKERS[speaker]
+    face = character(speaker, False).resize((170, 192), Image.LANCZOS)
+    im = Image.new("RGBA", (260, 260))
+    d = ImageDraw.Draw(im)
+    d.ellipse((20, 20, 240, 240), fill="white", outline=sp["color"], width=10)
+    im.paste(face, (45, 20), face)
+    d.rounded_rectangle((50, 196, 210, 250), 27, fill=sp["color"])
+    d.text((130, 223), "これ！", font=font(36), fill="white", anchor="mm")
+    return im
+
+
 def render_video(ep: Episode, voice: np.ndarray, audio_path: Path, segments: list[Segment],
                  total: float, out_path: Path, seed: int = 0) -> Path:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg が見つかりません")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    nq = len(ep.questions)
     bg = Background(seed)
-    banner = topic_banner(ep.topic)
-    subs = [subtitle_box(l.text, l.speaker) for l in ep.lines]
-    emojis = [emoji_image(l.emoji, 380) for l in ep.lines]
+    headers = [header(i, nq) for i in range(nq)]
+    cards = [{s: choice_card(getattr(q, s), s) for s in "ab"} for q in ep.questions]
+    subs = [subtitle_box(st.text, st.speaker) if st.kind == "line" else None for st in ep.steps]
     chars = {(s, m): character(s, m) for s in SPEAKERS for m in (False, True)}
-    shadow = Image.new("RGBA", (W, H))
+    badges = {s: pick_badge(s) for s in SPEAKERS}
+    vs = vs_badge("VS")
+    nums = {k: vs_badge(str(k), RED) for k in (1, 2, 3)}
 
-    # 口パク用: フレームごとの声の大きさ
+    # 各問の開始時刻(カードのスライドイン用)と、各選択の時刻
+    q_start = {}
+    picks = []  # (time, q, side, speaker)
+    for st, seg in zip(ep.steps, segments):
+        q_start.setdefault(st.q, seg.start)
+        if st.pick:
+            picks.append((seg.start, st.q, st.pick, st.speaker))
+    q_start[0] = 0.0
+
     hop = SR // FPS
     n_frames = int(total * FPS)
     loud = np.array([np.abs(voice[i * hop:(i + 1) * hop]).mean() if i * hop < voice.size else 0
@@ -275,41 +348,60 @@ def render_video(ep: Episode, voice: np.ndarray, audio_path: Path, segments: lis
            str(out_path)]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
-    char_pos = {"m": 260, "z": W - 260}
+    char_pos = {"m": 230, "z": W - 230}
     for f in range(n_frames):
         t = f / FPS
         idx = 0
-        for i, s in enumerate(segments):
-            if t >= s.start - 0.05:
+        for i, sg in enumerate(segments):
+            if t >= sg.start - 0.05:
                 idx = i
-        seg, line = segments[idx], ep.lines[idx]
-        p = (t - seg.start + 0.05) / 0.3
-        talking = seg.start <= t <= seg.end
+        st, seg = ep.steps[idx], segments[idx]
+        q = st.q
+        talking = st.kind == "line" and seg.start <= t <= seg.end
 
         frame = bg.frame(t)
-        # 進捗バー
         d = ImageDraw.Draw(frame)
         d.rectangle((0, 0, W, 14), fill=(255, 255, 255))
-        d.rectangle((0, 0, W * t / total, 14), fill=(235, 60, 70))
+        d.rectangle((0, 0, W * t / total, 14), fill=RED)
+        frame.paste(headers[q], (0, 0), headers[q])
 
-        frame.paste(banner, (0, 0), banner)
+        # カード(新しい問題ではスライドイン)
+        p_in = min(1.0, max(0.0, (t - q_start[q]) / 0.35)) if q > 0 else 1.0
+        ease = 1 - (1 - p_in) ** 3
+        chosen = {side: (pt, sp) for pt, qq, side, sp in picks if qq == q and pt <= t + 0.05}
+        for side in "ab":
+            off = (1 - ease) * W * (-1 if side == "a" else 1)
+            sc = 1.0
+            if side in chosen:
+                sc = 1 + 0.05 * min(1.0, (t - chosen[side][0]) / 0.2)
+            _paste_center(frame, cards[q][side], W / 2 + off, CARD_Y[side], sc)
 
-        em = emojis[idx]
-        if em is not None:
-            bob = 12 * math.sin(t * 3)
-            _paste_center(frame, em, W / 2, 720 + bob, _ease_pop(max(0, p)))
+        # 中央: カウントダウン中は数字、それ以外は VS
+        if st.kind == "countdown" and seg.start <= t <= seg.end:
+            k = 3 - int(t - seg.start)
+            p = (t - seg.start) % 1
+            _paste_center(frame, nums[max(1, k)], W / 2, 830, 1.25 - 0.25 * min(1, p / 0.25))
+        else:
+            _paste_center(frame, vs, W / 2, 830, 1.0 + 0.04 * math.sin(t * 4))
+
+        # 選んだキャラの顔バッジ
+        for side, (pt, sp) in chosen.items():
+            pp = min(1.0, (t - pt) / 0.3)
+            _paste_center(frame, badges[sp], W - 140, CARD_Y[side] - 120, _ease_pop(pp))
 
         sub = subs[idx]
-        slide = max(0.0, 1 - max(0, p) * 1.6) * 40
-        _paste_center(frame, sub, W / 2, 1270 + slide, 1.0, min(1.0, max(0.0, p * 2)))
+        if sub is not None:
+            p = (t - seg.start + 0.05) / 0.3
+            slide = max(0.0, 1 - max(0, p) * 1.6) * 30
+            _paste_center(frame, sub, W / 2, 1500 + slide, 1.0, min(1.0, max(0.0, p * 2)))
 
         for sp, x in char_pos.items():
-            active = sp == line.speaker
+            active = st.kind == "line" and sp == st.speaker
             mouth = active and talking and loud[f] > 0.02 and (f // 3) % 2 == 0
-            scale = 1.3 if active else 1.05
-            jump = -abs(math.sin(t * 9)) * 16 if active and talking else 0
-            _paste_center(frame, chars[(sp, mouth)], x, 1680 + jump, scale,
-                          1.0 if active else 0.75)
+            scale = 1.0 if active else 0.85
+            jump = -abs(math.sin(t * 9)) * 14 if active and talking else 0
+            _paste_center(frame, chars[(sp, mouth)], x, 1775 + jump, scale,
+                          1.0 if active else 0.8)
         proc.stdin.write(frame.tobytes())
 
     proc.stdin.close()

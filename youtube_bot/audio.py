@@ -37,7 +37,7 @@ def _post(path: str, params: dict, body: bytes | None = None) -> bytes:
         return r.read()
 
 
-def synthesize(text: str, speaker_id: int, speed: float = 1.15) -> np.ndarray:
+def synthesize(text: str, speaker_id: int, speed: float = 1.25) -> np.ndarray:
     query = json.loads(_post("/audio_query", {"text": text, "speaker": speaker_id}))
     query.update(speedScale=speed, prePhonemeLength=0.05, postPhonemeLength=0.1,
                  outputSamplingRate=SR, outputStereo=False)
@@ -120,6 +120,24 @@ def pop_sfx() -> np.ndarray:
     return (np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 35)).astype(np.float32)
 
 
+def tick_sfx(freq: float = 1200) -> np.ndarray:
+    t = np.arange(int(SR * 0.08)) / SR
+    return (np.sin(2 * np.pi * freq * t) * np.exp(-t * 60)).astype(np.float32)
+
+
+def ding_sfx() -> np.ndarray:
+    t = np.arange(int(SR * 0.6)) / SR
+    sig = sum(np.sin(2 * np.pi * f * t) / k for k, f in enumerate((880, 1320, 1760), 1))
+    return (sig * np.exp(-t * 6) * 0.6).astype(np.float32)
+
+
+COUNTDOWN_SECONDS = 3.0
+
+
+def countdown_chunk() -> np.ndarray:
+    return np.zeros(int(SR * COUNTDOWN_SECONDS), dtype=np.float32)
+
+
 # ---------------------------------------------------------------- ミックス
 
 @dataclass
@@ -128,11 +146,16 @@ class Segment:
     end: float
 
 
-def mix(voices: list[np.ndarray], gap: float, tail: float, seed: int
-        ) -> tuple[np.ndarray, list[Segment], float]:
+def mix(chunks: list[np.ndarray], kinds: list[str], gap: float, tail: float, seed: int
+        ) -> tuple[np.ndarray, np.ndarray, list[Segment], float]:
+    """chunks を順に並べ、BGM と効果音を重ねる。
+
+    kinds: "line"(セリフ。頭にポン音) / "countdown"(1秒ごとにカチ、最後にチーン)
+    戻り値: (ミックス, 声だけのトラック, 各チャンクの区間, 全体の秒数)
+    """
     segments, t = [], 0.3
-    for v in voices:
-        d = v.size / SR
+    for c in chunks:
+        d = c.size / SR
         segments.append(Segment(t, t + d))
         t += d + gap
     total = t - gap + tail
@@ -140,12 +163,21 @@ def mix(voices: list[np.ndarray], gap: float, tail: float, seed: int
     n = int(SR * total)
     voice_track = np.zeros(n, dtype=np.float32)
     sfx_track = np.zeros(n, dtype=np.float32)
-    pop = pop_sfx()
-    for v, seg in zip(voices, segments):
-        i = int(seg.start * SR)
-        voice_track[i : i + v.size] += v[: n - i]
-        j = max(0, i - int(SR * 0.05))
-        sfx_track[j : j + pop.size] += pop[: n - j]
+
+    def add(track, sig, start, gain=1.0):
+        i = max(0, int(start * SR))
+        j = min(n, i + sig.size)
+        if i < n:
+            track[i:j] += sig[: j - i] * gain
+
+    for c, kind, seg in zip(chunks, kinds, segments):
+        if kind == "countdown":
+            for k in range(int(COUNTDOWN_SECONDS)):
+                add(sfx_track, tick_sfx(), seg.start + k, 0.5)
+            add(sfx_track, ding_sfx(), seg.end - 0.05, 0.45)
+        else:
+            add(voice_track, c, seg.start)
+            add(sfx_track, pop_sfx(), seg.start - 0.05, 0.18)
 
     bgm = make_bgm(total, seed)
     # 声がある間は BGM を下げる(ダッキング)
@@ -154,9 +186,9 @@ def mix(voices: list[np.ndarray], gap: float, tail: float, seed: int
     talking = np.convolve(blocks.astype(np.float32), np.ones(5) / 5, mode="same")
     env = np.interp(np.arange(n), np.arange(talking.size) * hop + hop / 2, talking)
     bgm_gain = 0.22 - 0.12 * np.clip(env * 2, 0, 1)
-    out = voice_track * 0.95 + sfx_track * 0.18 + bgm * bgm_gain
+    out = voice_track * 0.95 + sfx_track + bgm * bgm_gain
     out /= max(1.0, float(np.abs(out).max()) / 0.95)
-    return out, segments, total
+    return out, voice_track, segments, total
 
 
 def write_wav(path, samples: np.ndarray) -> None:
