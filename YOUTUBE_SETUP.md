@@ -58,11 +58,10 @@ python scripts/get_refresh_token.py client_secret.json
 
 ## 注意点
 
-- **未審査の API プロジェクトからの投稿は「非公開」に固定されます。**
-  2020年7月以降に作られた API プロジェクトは、Google の監査
+- 未審査の API プロジェクトからの投稿は「非公開」に固定される場合があります。
+  そうなったら Google の監査
   （[YouTube API Services 監査フォーム](https://support.google.com/youtube/contact/yt_api_form)）
-  を通過するまで、`public` を指定しても非公開になります。
-  公開投稿するには監査を申請してください（数日〜数週間）。
+  を申請してください（数日〜数週間）。
 - API の無料枠は 1日 10,000 ユニット、アップロードは 1本あたり約 1,600。1日1本なら余裕です。
 - 公開リポジトリは 60日間コミットがないと定期実行が自動停止します。Actions タブから再有効化できます。
 - 手元で試す場合: `pip install -r requirements-youtube.txt` と ffmpeg を入れて
