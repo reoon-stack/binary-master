@@ -1,10 +1,12 @@
 # YouTube 全自動投稿のセットアップ
 
-GitHub Actions が **毎日 18:07 (日本時間)** に「究極の2択」ショート動画を自動で作って YouTube に投稿します。
+GitHub Actions が **毎日 18:07 (日本時間)** に「ドット絵の料理当てクイズ」ショート動画を自動で作って YouTube に投稿します。
 
-- 1本に3問。ずんだもんと四国めたん（VOICEVOX）が別々の側を選んで理由を話し、最後に「コメントで 1A 2B 3A みたいに教えてね」と呼びかけます。
-- BGM・効果音はコードで合成（著作権フリー）。説明欄に VOICEVOX のクレジットを自動で入れます。
-- 2択のネタは `youtube_bot/choices.json`（1行 = `[A, Aの絵文字, Aの理由, B, Bの絵文字, Bの理由]`）。追加すると自動でローテーションに入ります。理由は「〜からなのだ」「〜からよ」が後ろにつく形で書いてください。
+- 真上から見たキッチンで、手が材料を刻み → 炒める/煮る → 盛り付け。最後に「何の料理か わかった？」
+- 絵・音（包丁・ジュー・ぐつぐつ など）はすべてコードで生成（外部素材なし・著作権フリー）
+- 料理は 8 品をローテーション（オムライス / カレーライス / 親子丼 / 焼きそば / ナポリタン / 肉じゃが / 豚汁 / ミネストローネ）。一周するごとに、まな板・ランチョンマット・袖の色が変わります
+- 料理を増やすには `pixel_cooking/dishes.py` にレシピを追加します
+- 手元で 1 本作る: `python -m pixel_cooking out.mp4 --dish curry`
 
 ---
 
@@ -64,6 +66,5 @@ python scripts/get_refresh_token.py client_secret.json
   を申請してください（数日〜数週間）。
 - API の無料枠は 1日 10,000 ユニット、アップロードは 1本あたり約 1,600。1日1本なら余裕です。
 - 公開リポジトリは 60日間コミットがないと定期実行が自動停止します。Actions タブから再有効化できます。
-- 手元で試す場合: `pip install -r requirements-youtube.txt` と ffmpeg を入れて
-  VOICEVOX エンジンを起動（`docker run -p 50021:50021 voicevox/voicevox_engine:cpu-latest`）してから
+- 手元で試す場合: `pip install -r requirements-youtube.txt`、ffmpeg と fonts-unifont を入れて
   `python -m youtube_bot --dry-run`（`output/` に mp4 ができます）。

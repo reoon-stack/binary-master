@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       index:
-        description: "台本の番号 (空欄なら日付で自動)"
+        description: "何本目の動画か (空欄なら日付で自動。料理は8品をローテーション)"
         required: false
         type: string
       dry_run:
@@ -24,11 +24,6 @@ jobs:
   post:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      voicevox:
-        image: voicevox/voicevox_engine:cpu-latest
-        ports:
-          - 50021:50021
     steps:
       - uses: actions/checkout@v4
 
@@ -36,21 +31,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: ffmpeg とフォントをインストール
+      - name: ffmpeg とドットフォントをインストール
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-unifont
 
       - name: Python パッケージをインストール
         run: pip install -r requirements-youtube.txt
-
-      - name: VOICEVOX の起動を待つ
-        run: |
-          for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:50021/version && exit 0
-            sleep 3
-          done
-          echo "VOICEVOX が起動しませんでした" && exit 1
 
       - name: 動画を作成して投稿
         env:

@@ -10,10 +10,10 @@ import os
 import time
 from pathlib import Path
 
-from .content import Episode
+from .meta import Episode
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
-CATEGORY_EDUCATION = "27"
+CATEGORY_HOWTO = "26"  # ハウツーとスタイル(料理)
 
 
 def _credentials():
@@ -47,9 +47,9 @@ def upload(ep: Episode, video: Path, privacy: str = "public") -> str:
             "title": ep.title,
             "description": ep.description[:5000],
             "tags": ep.tags,
-            "categoryId": CATEGORY_EDUCATION,
+            "categoryId": CATEGORY_HOWTO,
             "defaultLanguage": "ja",
-            "defaultAudioLanguage": "ja",
+            "defaultAudioLanguage": "zxx",
         },
         "status": {
             "privacyStatus": privacy,
