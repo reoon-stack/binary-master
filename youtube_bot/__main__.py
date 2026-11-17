@@ -50,7 +50,8 @@ def main() -> None:
                 f.write(msg + "\n")
         return
     dish, theme = picked
-    ep = build_episode(dish, index)
+    prev = pick(index - 1)
+    ep = build_episode(dish, index, prev[0] if prev else None)
     print(f"[{date}] #{index + 1}/{len(DISHES)} {dish.key}({dish.answer}) : {ep.title}")
 
     video = make_video(dish, theme, Path(args.out) / f"{date}_{dish.key}.mp4", seed=index)
