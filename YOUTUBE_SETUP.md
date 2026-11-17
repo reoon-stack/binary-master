@@ -1,11 +1,12 @@
 # YouTube 全自動投稿のセットアップ
 
-GitHub Actions が **毎日 18:07 (日本時間)** に縦型ショート動画を自動で作って YouTube に投稿します。
+GitHub Actions が **毎日 18:07 (日本時間)** に「ドット絵の料理当てクイズ」ショート動画を自動で作って YouTube に投稿します。
 
-- 偶数日: **今日の豆知識**（2進数・16進数・文字コード・ネットワークなど 30 本、`youtube_bot/tips.json`）
-- 奇数日: **基数変換クイズ**（日付から自動出題、解き方つき・ネタ切れなし）
-
-豆知識は `youtube_bot/tips.json` に追加すれば自動でローテーションに入ります。
+- 真上から見たキッチンで、手が材料を刻み → 炒める/煮る → 盛り付け。最後に「何の料理か わかった？」
+- 絵・音（包丁・ジュー・ぐつぐつ など）はすべてコードで生成（外部素材なし・著作権フリー）
+- 料理は 8 品を 1 日 1 品ずつ、各 1 回だけ投稿（オムライス / カレーライス / 親子丼 / 焼きそば / ナポリタン / 肉じゃが / 豚汁 / ミネストローネ）。`youtube_bot/__main__.py` の `START_DATE` の日に 1 本目。8 品を投稿し終えると、その後は何も投稿しません
+- 料理を増やすには `pixel_cooking/dishes.py` にレシピを追加します
+- 手元で 1 本作る: `python -m pixel_cooking out.mp4 --dish curry`
 
 ---
 
@@ -59,12 +60,11 @@ python scripts/get_refresh_token.py client_secret.json
 
 ## 注意点
 
-- **未審査の API プロジェクトからの投稿は「非公開」に固定されます。**
-  2020年7月以降に作られた API プロジェクトは、Google の監査
+- 未審査の API プロジェクトからの投稿は「非公開」に固定される場合があります。
+  そうなったら Google の監査
   （[YouTube API Services 監査フォーム](https://support.google.com/youtube/contact/yt_api_form)）
-  を通過するまで、`public` を指定しても非公開になります。
-  公開投稿するには監査を申請してください（数日〜数週間）。
+  を申請してください（数日〜数週間）。
 - API の無料枠は 1日 10,000 ユニット、アップロードは 1本あたり約 1,600。1日1本なら余裕です。
 - 公開リポジトリは 60日間コミットがないと定期実行が自動停止します。Actions タブから再有効化できます。
-- 手元で試す場合: `pip install -r requirements-youtube.txt` と ffmpeg を入れて
+- 手元で試す場合: `pip install -r requirements-youtube.txt`、ffmpeg と fonts-unifont を入れて
   `python -m youtube_bot --dry-run`（`output/` に mp4 ができます）。
