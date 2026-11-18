@@ -35,7 +35,7 @@ in vec3 v_world; in vec3 v_nrm; in vec4 v_col; in vec4 v_light;
 uniform sampler2D u_shadow;
 uniform vec3 u_sun_dir; uniform vec3 u_sun_col;
 uniform vec3 u_sky; uniform vec3 u_ground;
-uniform vec3 u_lamp_pos; uniform vec3 u_lamp_col; uniform float u_lamp;
+uniform int u_nl; uniform vec3 u_lp[16]; uniform vec3 u_lc[16]; uniform float u_falloff;
 uniform float u_glow; uniform float u_flash;
 out vec4 f;
 float shadow() {
@@ -56,10 +56,12 @@ void main() {
     float diff = max(dot(n, normalize(u_sun_dir)), 0.0);
     vec3 amb = mix(u_ground, u_sky, n.y * 0.5 + 0.5);
     vec3 col = base * (amb + u_sun_col * diff * shadow());
-    vec3 L = u_lamp_pos - v_world;
-    float dist = length(L);
-    float ld = max(dot(n, L / dist), 0.0) * 0.6 + 0.4;
-    col += base * u_lamp_col * u_lamp * ld / (1.0 + 0.35 * dist * dist);
+    for (int i = 0; i < u_nl; i++) {
+        vec3 L = u_lp[i] - v_world;
+        float dist = length(L);
+        float ld = max(dot(n, L / dist), 0.0) * 0.6 + 0.4;
+        col += base * u_lc[i] * ld / (1.0 + u_falloff * dist * dist);
+    }
     col = mix(col, base * (1.0 + 0.6 * u_glow), clamp(v_col.a * u_glow, 0.0, 1.0));
     col += vec3(u_flash);
     f = vec4(pow(col, vec3(1.0 / 1.15)), 1.0);
@@ -84,10 +86,20 @@ void main() {
 """
 BG_FS = """
 #version 330
-in vec2 uv; uniform vec3 u_top; uniform vec3 u_bottom; out vec4 f;
+in vec2 uv; uniform vec3 u_top; uniform vec3 u_bottom; uniform float u_stars; uniform float u_time;
+out vec4 f;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
     float v = clamp(uv.y, 0.0, 1.0);
     vec3 c = mix(u_bottom, u_top, v);
+    if (u_stars > 0.0) {
+        vec2 g = floor(uv * vec2(90.0, 160.0));
+        float h = hash(g);
+        if (h > 0.985) {
+            float tw = 0.6 + 0.4 * sin(u_time * 3.0 + h * 100.0);
+            c += vec3(1.0, 0.97, 0.9) * u_stars * tw * smoothstep(0.25, 0.7, v);
+        }
+    }
     float r = length((uv - 0.5) * vec2(0.9, 1.3));
     c *= 1.0 - 0.25 * smoothstep(0.35, 0.9, r);
     f = vec4(c, 1.0);
@@ -165,7 +177,8 @@ class Renderer:
         sun = np.array(light["sun_dir"], dtype="f4")
         sun /= np.linalg.norm(sun)
         lview = look_at(sun * 12, (0, 1, 0))
-        light_vp = ortho(-7, 7, -7, 7, 1, 30) @ lview
+        ext = light.get("shadow_extent", 7)
+        light_vp = ortho(-ext, ext, -ext, ext, 1, 30) @ lview
 
         # 影
         self.shadow_fbo.use()
@@ -180,7 +193,10 @@ class Renderer:
         self.fbo.use()
         self.fbo.clear(0, 0, 0)
         self.ctx.disable(moderngl.DEPTH_TEST)
-        self.bg["u_top"].value, self.bg["u_bottom"].value = bg
+        self.bg["u_top"].value, self.bg["u_bottom"].value = bg[0], bg[1]
+        if "u_stars" in self.bg:
+            self.bg["u_stars"].value = bg[2] if len(bg) > 2 else 0.0
+            self.bg["u_time"].value = bg[3] if len(bg) > 3 else 0.0
         self.bg_vao.render(vertices=3)
         self.ctx.enable(moderngl.DEPTH_TEST)
         vp = perspective(fov, self.w / self.h, 0.1, 100) @ look_at(cam_eye, cam_target)
@@ -191,9 +207,20 @@ class Renderer:
         p["u_sun_col"].value = light["sun_col"]
         p["u_sky"].value = light["sky"]
         p["u_ground"].value = light["ground"]
-        p["u_lamp_pos"].value = light["lamp_pos"]
-        p["u_lamp_col"].value = light["lamp_col"]
-        p["u_lamp"].value = light["lamp"]
+        lamps = light.get("lamps")
+        if lamps is None:
+            k = light.get("lamp", 0.0)
+            lamps = [(light["lamp_pos"], tuple(c * k for c in light["lamp_col"]))] if k > 0 else []
+        lamps = lamps[:16]
+        p["u_nl"].value = len(lamps)
+        p["u_falloff"].value = light.get("falloff", 0.35)
+        if lamps:
+            pos = np.zeros((16, 3), "f4")
+            col = np.zeros((16, 3), "f4")
+            for i, (lp, lc) in enumerate(lamps):
+                pos[i], col[i] = lp, lc
+            p["u_lp"].write(pos.tobytes())
+            p["u_lc"].write(col.tobytes())
         p["u_glow"].value = light["glow"]
         p["u_flash"].value = light.get("flash", 0.0)
         self.shadow_tex.use(0)

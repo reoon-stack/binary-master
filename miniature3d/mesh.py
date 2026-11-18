@@ -87,3 +87,17 @@ def to_array(parts) -> np.ndarray:
     for p in parts:
         flat.extend(p)
     return np.array(flat, dtype="f4")
+
+
+def transform(parts, m):
+    """部品をまとめて 4x4 行列で動かす(回転した家や道路を作るとき)。"""
+    m = np.asarray(m, dtype="f4")
+    out = []
+    for p in parts:
+        arr = np.array(p, dtype="f4").reshape(-1, 10)
+        pos = np.c_[arr[:, :3], np.ones(len(arr), "f4")] @ m.T
+        nrm = arr[:, 3:6] @ m[:3, :3].T
+        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-9
+        arr[:, :3], arr[:, 3:6] = pos[:, :3], nrm
+        out.append(arr.ravel().tolist())
+    return out
