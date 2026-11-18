@@ -63,6 +63,8 @@ def main() -> None:
 
     video_id = upload(ep, video, args.privacy)
     print(f"アップロード完了 ({args.privacy}): https://youtube.com/shorts/{video_id}")
+    # 予備の定期実行が同じ日に二重投稿しないための目印(ワークフローが artifact として残す)
+    (Path(args.out) / "posted.txt").write_text(f"{date} {dish.key} {video_id}\n", encoding="utf-8")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as f:

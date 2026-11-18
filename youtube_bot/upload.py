@@ -36,39 +36,64 @@ def _credentials():
     )
 
 
+def clean_tags(tags):
+    """YouTube が受け付けるタグだけにする(記号を除き、合計 400 文字以内)。"""
+    out, total = [], 0
+    for t in tags:
+        t = "".join(ch for ch in t if ch not in '<>,"#&').strip()
+        if not t or len(t) > 30 or t in out:
+            continue
+        cost = len(t) + (2 if " " in t else 0) + 1
+        if total + cost > 400:
+            break
+        out.append(t)
+        total += cost
+    return out
+
+
 def upload(ep: Episode, video: Path, privacy: str = "public") -> str:
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     from googleapiclient.http import MediaFileUpload
 
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
-    body = {
-        "snippet": {
+
+    def body_for(minimal: bool):
+        snippet = {
             "title": ep.title,
             "description": ep.description[:5000],
-            "tags": ep.tags,
             "categoryId": CATEGORY_HOWTO,
             "defaultLanguage": "ja",
-            "defaultAudioLanguage": "zxx",
-        },
-        "status": {
-            "privacyStatus": privacy,
-            "selfDeclaredMadeForKids": False,
-        },
-    }
-    media = MediaFileUpload(str(video), mimetype="video/mp4", chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+            "defaultAudioLanguage": "ja",
+        }
+        if not minimal:
+            snippet["tags"] = clean_tags(ep.tags)
+        return {"snippet": snippet,
+                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
 
-    response = None
-    for attempt in range(5):
-        try:
-            while response is None:
-                _, response = request.next_chunk()
-            break
-        except HttpError as e:
-            if e.resp.status not in (500, 502, 503, 504) or attempt == 4:
-                raise
-            time.sleep(2 ** attempt * 5)
+    def send(body):
+        media = MediaFileUpload(str(video), mimetype="video/mp4", chunksize=-1, resumable=True)
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        response = None
+        for attempt in range(5):
+            try:
+                while response is None:
+                    _, response = request.next_chunk()
+                return response
+            except HttpError as e:
+                if e.resp.status not in (500, 502, 503, 504) or attempt == 4:
+                    raise
+                time.sleep(2 ** attempt * 5)
+
+    try:
+        response = send(body_for(minimal=False))
+    except HttpError as e:
+        # タグなどの付加情報が原因で断られたら、最小限の情報でもう一度送る(投稿を優先)
+        if e.resp.status == 400 and b"INVALID_REQUEST_METADATA" in (e.content or b""):
+            print("タグなどの情報で断られたので、タグなしで送り直します:", e)
+            response = send(body_for(minimal=True))
+        else:
+            raise
 
     video_id = response["id"]
     return video_id
