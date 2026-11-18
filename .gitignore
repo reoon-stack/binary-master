@@ -2,3 +2,4 @@ output/
 __pycache__/
 client_secret*.json
 pixel_cooking/output/
+miniature3d/output/
