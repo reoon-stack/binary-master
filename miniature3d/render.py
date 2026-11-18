@@ -36,7 +36,7 @@ uniform sampler2D u_shadow;
 uniform vec3 u_sun_dir; uniform vec3 u_sun_col;
 uniform vec3 u_sky; uniform vec3 u_ground;
 uniform int u_nl; uniform vec3 u_lp[16]; uniform vec3 u_lc[16]; uniform float u_falloff;
-uniform float u_glow; uniform float u_flash;
+uniform float u_glow; uniform float u_flash; uniform vec3 u_cam; uniform float u_spec; uniform float u_shadow_floor;
 out vec4 f;
 float shadow() {
     vec3 p = v_light.xyz / v_light.w * 0.5 + 0.5;
@@ -55,7 +55,8 @@ void main() {
     vec3 base = v_col.rgb;
     float diff = max(dot(n, normalize(u_sun_dir)), 0.0);
     vec3 amb = mix(u_ground, u_sky, n.y * 0.5 + 0.5);
-    vec3 col = base * (amb + u_sun_col * diff * shadow());
+    float sh = shadow();
+    vec3 col = base * (amb + u_sun_col * diff * (u_shadow_floor + (1.0 - u_shadow_floor) * sh));
     for (int i = 0; i < u_nl; i++) {
         vec3 L = u_lp[i] - v_world;
         float dist = length(L);
@@ -63,6 +64,10 @@ void main() {
         col += base * u_lc[i] * ld / (1.0 + u_falloff * dist * dist);
     }
     col = mix(col, base * (1.0 + 0.6 * u_glow), clamp(v_col.a * u_glow, 0.0, 1.0));
+    vec3 V = normalize(u_cam - v_world);
+    vec3 Hh = normalize(normalize(u_sun_dir) + V);
+    float sp = pow(max(dot(n, Hh), 0.0), 48.0) * u_spec * sh;
+    col += u_sun_col * sp;
     col += vec3(u_flash);
     f = vec4(pow(col, vec3(1.0 / 1.15)), 1.0);
 }
@@ -142,6 +147,26 @@ def scale(sx, sy, sz):
     return np.diag([sx, sy, sz, 1.0]).astype("f4")
 
 
+def rot_z(a):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[c, -s, 0, 0], [s, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype="f4")
+
+
+def rot_x(a):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]], dtype="f4")
+
+
+def rot_axis(axis, a):
+    x, y, z = np.asarray(axis, dtype="f8") / (np.linalg.norm(axis) or 1.0)
+    c, s, t = math.cos(a), math.sin(a), 1 - math.cos(a)
+    m = np.eye(4, dtype="f4")
+    m[:3, :3] = [[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+                 [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+                 [t * x * z - s * y, t * y * z + s * x, t * z * z + c]]
+    return m
+
+
 def rot_y(a):
     c, s = math.cos(a), math.sin(a)
     return np.array([[c, 0, s, 0], [0, 1, 0, 0], [-s, 0, c, 0], [0, 0, 0, 1]], dtype="f4")
@@ -176,7 +201,8 @@ class Renderer:
         """draws: [(mesh_key, model 行列)]  light: dict  bg: (上の色, 下の色)"""
         sun = np.array(light["sun_dir"], dtype="f4")
         sun /= np.linalg.norm(sun)
-        lview = look_at(sun * 12, (0, 1, 0))
+        center = np.array(light.get("center", (0, 1, 0)), dtype="f4")
+        lview = look_at(center + sun * 12, center)
         ext = light.get("shadow_extent", 7)
         light_vp = ortho(-ext, ext, -ext, ext, 1, 30) @ lview
 
@@ -228,11 +254,15 @@ class Renderer:
             p["u_lc"].write(col.tobytes())
         p["u_glow"].value = light["glow"]
         p["u_flash"].value = light.get("flash", 0.0)
+        p["u_cam"].value = tuple(float(v) for v in cam_eye)
+        p["u_shadow_floor"].value = light.get("shadow_floor", 0.0)
+        spec = light.get("spec", {})
         self.shadow_tex.use(0)
         p["u_shadow"].value = 0
         for d_ in draws:
             key, model = d_[0], d_[1]
             p["u_model"].write(model.T.copy())
+            p["u_spec"].value = spec.get(key, light.get("spec_default", 0.12))
             if len(d_) > 2:                       # (key, 行列, 頂点数): 先頭から一部だけ描く
                 if d_[2] > 0:
                     self.meshes[key][0].render(vertices=d_[2])
