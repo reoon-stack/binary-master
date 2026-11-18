@@ -185,9 +185,14 @@ class Renderer:
         self.shadow_fbo.clear(depth=1.0)
         self.ctx.enable(moderngl.DEPTH_TEST)
         self.sprog["u_light_vp"].write(light_vp.T.copy())
-        for key, model in draws:
+        for d_ in draws:
+            key, model = d_[0], d_[1]
             self.sprog["u_model"].write(model.T.copy())
-            self.meshes[key][1].render()
+            if len(d_) > 2:
+                if d_[2] > 0:
+                    self.meshes[key][1].render(vertices=d_[2])
+            else:
+                self.meshes[key][1].render()
 
         # 本番
         self.fbo.use()
@@ -225,8 +230,13 @@ class Renderer:
         p["u_flash"].value = light.get("flash", 0.0)
         self.shadow_tex.use(0)
         p["u_shadow"].value = 0
-        for key, model in draws:
+        for d_ in draws:
+            key, model = d_[0], d_[1]
             p["u_model"].write(model.T.copy())
-            self.meshes[key][0].render()
+            if len(d_) > 2:                       # (key, 行列, 頂点数): 先頭から一部だけ描く
+                if d_[2] > 0:
+                    self.meshes[key][0].render(vertices=d_[2])
+            else:
+                self.meshes[key][0].render()
         self.ctx.copy_framebuffer(self.out, self.fbo)
         return self.out.read(components=3)
