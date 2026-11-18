@@ -134,7 +134,7 @@ def boil_track(intensity, seed):
 def build_audio(sc: Scene) -> np.ndarray:
     m = Mixer(DURATION)
     m.add(band_noise(int(SR * DURATION), 80, 900, 1) * 0.035, 0)
-    m.add(chime([523.25, 659.25, 783.99], 0.35) * 0.6, 0.15)
+    m.add(chime([523.25, 659.25, 783.99], 0.35) * 0.22, 0.15)       # 最初のチャイム(控えめ)
 
     for (a, b, n), g in ((CUT1, 1.0), (CUT2, 0.8)):
         for k in range(n):
@@ -225,9 +225,9 @@ def build_audio(sc: Scene) -> np.ndarray:
             m.add(scrape(b - a - 0.4, int(a * 10), 4000, 12000) * 0.5, a + 0.25)
         else:
             m.add(thud(int(a * 10)) * 0.3, b - 0.25)
-    m.add(chime([783.99, 987.77, 1174.66, 1567.98], 0.09) * 0.4, 27.3)
+    m.add(chime([783.99, 987.77, 1174.66, 1567.98], 0.09) * 0.16, 27.3)   # 完成のチャイム(控えめ)
     sp = int(SR * 2.5)
-    m.add(band_noise(sp, 6000, 14000, 99) * np.exp(-np.arange(sp) / (SR * 0.8)) * 0.06, 27.35)
+    m.add(band_noise(sp, 6000, 14000, 99) * np.exp(-np.arange(sp) / (SR * 0.8)) * 0.025, 27.35)
 
     out = m.buf
     out /= max(1e-9, np.abs(out).max()) / 0.9
